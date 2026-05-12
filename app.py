@@ -67,10 +67,24 @@ def get_openai_client():
     return OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 
-def retrieve(question: str, k: int = 3) -> str:
+def retrieve(question: str, k: int = 3) -> tuple[str, list]:
+    """유사 청크 검색. (context 텍스트, [(doc, score), ...]) 반환"""
     db = load_vectorstore()
-    docs = db.similarity_search(question, k=k)
-    return "\n\n".join(doc.page_content for doc in docs)
+    results = db.similarity_search_with_relevance_scores(question, k=k)
+    context = "\n\n".join(doc.page_content for doc, _ in results)
+    return context, results
+
+
+def render_sources(sources: list):
+    """출처 expander 카드 렌더링"""
+    for i, (doc, score) in enumerate(sources):
+        relevance = round(score * 100, 1)
+        filename = doc.metadata.get("source", "알 수 없음").removesuffix(".txt")
+        chunk_no = doc.metadata.get("chunk", 0) + 1
+        label = f"📎 출처 {i + 1}  ·  {filename}  ·  청크 {chunk_no}  ·  관련도 {relevance}%"
+        with st.expander(label):
+            st.caption("원문 청크")
+            st.text(doc.page_content)
 
 
 def ask_gpt(question: str, context: str, language: str) -> str:
@@ -82,6 +96,7 @@ def ask_gpt(question: str, context: str, language: str) -> str:
         "中文": "请用中文回答。",
     }.get(language, "한국어로 답변하세요.")
 
+    #######################################core prompt
     system_prompt = (
         f"당신은 학교 안내 챗봇입니다. {lang_instruction} "
         "아래 [참고 자료]만 사용해서 질문에 답변하세요. "
@@ -192,16 +207,19 @@ def page_chatbot():
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]):
             st.write(msg["content"])
+        if msg["role"] == "assistant" and msg.get("sources"):
+            render_sources(msg["sources"])
 
     if question := st.chat_input("학교 관련 질문을 입력하세요..."):
         st.session_state.messages.append({"role": "user", "content": question})
         with st.chat_message("user"):
             st.write(question)
 
+        sources = []
         with st.chat_message("assistant"):
             with st.spinner("답변 생성 중..."):
                 try:
-                    context = retrieve(question)
+                    context, sources = retrieve(question)
                     answer = ask_gpt(question, context, user["language"])
                 except FileNotFoundError:
                     answer = "인덱스 파일이 없습니다. 먼저 `python src/build_index.py`를 실행해주세요."
@@ -209,7 +227,8 @@ def page_chatbot():
                     answer = f"오류가 발생했습니다: {e}"
             st.write(answer)
 
-        st.session_state.messages.append({"role": "assistant", "content": answer})
+        render_sources(sources)
+        st.session_state.messages.append({"role": "assistant", "content": answer, "sources": sources})
 
 
 # ── 라우터 ────────────────────────────────────────────────────────────────────

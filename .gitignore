@@ -16,6 +16,9 @@ data/*.pdf
 data/*.faiss
 data/*.pkl
 
+# 회원 정보 (개인정보)
+users/
+
 # IDE
 .vscode/
 .idea/

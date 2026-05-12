@@ -12,6 +12,7 @@ faiss-cpu>=1.8.0
 
 # Document Parsing
 llama-parse>=0.4.0
+pypdf>=4.0.0
 
 # Reranker
 sentence-transformers>=3.0.0
